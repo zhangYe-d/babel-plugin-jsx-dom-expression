@@ -1,0 +1,28 @@
+{
+  "name": "babel-plugin-jsx-dom-expression",
+  "version": "0.0.1",
+  "description": "a simple implementation of turning jsx to solid function call and template",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangYe-d/babel-plugin-jsx-dom-expression.git"
+  },
+  "type": "module",
+  "keywords": [
+    "jsx-dom-expression"
+  ],
+  "author": "zhangYe-d",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zhangYe-d/babel-plugin-jsx-dom-expression/issues"
+  },
+  "homepage": "https://github.com/zhangYe-d/babel-plugin-jsx-dom-expression#readme",
+  "dependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/plugin-syntax-jsx": "^7.25.9",
+    "@babel/types": "^7.26.3"
+  }
+}
