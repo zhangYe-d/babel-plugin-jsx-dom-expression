@@ -1,5 +1,7 @@
 import { types as t } from "@babel/core";
 import { addNamed } from "@babel/helper-module-imports";
+import { identifier } from "@babel/types";
+import { callExpression } from "@babel/types";
 
 const noop = () => {};
 
@@ -55,6 +57,8 @@ const transformComponent = (path, tagName) => {
     config.moduleName
   );
 
+  log(path.get("openingElement").node);
+
   const props = transformProps(path.get("openingElement").node.attributes);
 
   expressions.push(
@@ -64,7 +68,7 @@ const transformComponent = (path, tagName) => {
 };
 
 const transformProps = (attributes) => {
-  log(attributes);
+  // log(attributes);
   const properties = attributes.reduce((props, attribute) => {
     if (t.isJSXExpressionContainer(attribute)) {
       if (t.isEmptyStatement(attribute.expression)) return props;
@@ -83,10 +87,62 @@ const transformProps = (attributes) => {
 };
 
 const createTemplate = (path, results) => {
+  if (results.identifier) {
+    const templateIdentifier = registerTemplate(path, results.template);
+    const { dynamics } = results;
+    if (dynamics.length) {
+      const arrowFuntion = t.arrowFunctionExpression(
+        [],
+        t.blockStatement([
+          t.variableDeclaration("var", [
+            t.variableDeclarator(
+              results.identifier,
+              callExpression(templateIdentifier, [])
+            ),
+          ]),
+          t.returnStatement(results.identifier),
+        ])
+      );
+      return t.callExpression(arrowFuntion, []);
+    }
+
+    return t.callExpression(results.identifier, []);
+  }
+
   return results.expressions[0];
 };
 
-const transformElementDom = (path) => {};
+const registerTemplate = (path, template) => {
+  const templateInfos =
+    path.scope.getProgramParent().data.templateInfos ||
+    (path.scope.getProgramParent().data.templateInfos = []);
+
+  const templateInfo = templateInfos.find(
+    (tempObj) => tempObj.template === template
+  );
+  if (templateInfo) {
+    return templateInfo.identifier;
+  }
+
+  const identifier = path.scope.generateUidIdentifier("tmp$");
+  templateInfos.push({
+    identifier,
+    template,
+  });
+
+  return identifier;
+};
+
+const transformElementDom = (path) => {
+  let expressions = [],
+    dynamics = [1];
+  const results = {
+    identifier: path.scope.generateUidIdentifier("el$"),
+    expressions,
+    dynamics,
+  };
+  return results;
+};
 
 const getAttributePropertyKeyAndValue = (attribute) => {
   let key, value;
@@ -101,7 +157,7 @@ const getTagName = (openingElement) => openingElement.name.name;
 
 const isComponent = (tagName) =>
   (tagName[0] && tagName[0].toLowerCase() !== tagName[0]) ||
-  /[^a-zA-Z]/.test(tagName) ||
+  /^[^a-zA-Z]/.test(tagName) ||
   tagName.includes(".");
 
 const registerImportMethod = (path, name, moduleName) => {
@@ -119,8 +175,7 @@ const registerImportMethod = (path, name, moduleName) => {
     return identifier;
   }
 
-  // need to switch to t.cloneNode()?
-  return imports.get(moduleMethodKey).cloneNode();
+  return t.cloneNode(imports.get(moduleMethodKey));
 };
 
 export const transformJsxFragment = noop;
