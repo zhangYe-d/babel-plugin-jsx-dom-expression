@@ -1,7 +1,5 @@
 import { types as t } from "@babel/core";
 import { addNamed } from "@babel/helper-module-imports";
-import { identifier } from "@babel/types";
-import { callExpression } from "@babel/types";
 
 const noop = () => {};
 
@@ -24,29 +22,42 @@ export const transformJsx = (path) => {
   path.replaceWith(createTemplate(path, results));
 };
 
-const transformNode = (path) => {
+const transformNode = (path, info = {}) => {
   const node = path.node;
+
   switch (node.type) {
     case JSXElement:
-      return transformElement(path);
+      return transformElement(path, info);
     case JSXText:
+      const results = {
+        template: trimWhitespace(node.extra.raw),
+        expressions: [],
+      };
+      if (!info.skipId)
+        results.identifier = path.scope.generateUidIdentifier("$el");
+      return results;
     case JSXExpressionContainer:
       if (t.isJSXEmptyExpression(node.expression)) {
         return null;
       }
-      return transformNode(node.expression);
+
+      return {
+        expressions: [node.expression],
+        template: "",
+      };
+    default:
   }
 
-  return {};
+  return results;
 };
 
-const transformElement = (path) => {
+const transformElement = (path, info) => {
   const openingElementPath = path.get("openingElement");
   const tagName = getTagName(openingElementPath.node);
 
   return isComponent(tagName)
     ? transformComponent(path, tagName)
-    : transformElementDom(path);
+    : transformElementDom(path, info);
 };
 
 const transformComponent = (path, tagName) => {
@@ -57,7 +68,7 @@ const transformComponent = (path, tagName) => {
     config.moduleName
   );
 
-  log(path.get("openingElement").node);
+  // log(path.get("openingElement").node);
 
   const props = transformProps(path.get("openingElement").node.attributes);
 
@@ -89,24 +100,23 @@ const transformProps = (attributes) => {
 const createTemplate = (path, results) => {
   if (results.identifier) {
     const templateIdentifier = registerTemplate(path, results.template);
-    const { dynamics } = results;
-    if (dynamics.length) {
+    if (results.expressions.length) {
+      const elementCallExpression = t.callExpression(templateIdentifier, []);
+      results.declarators.unshift(
+        t.variableDeclarator(results.identifier, elementCallExpression)
+      );
       const arrowFuntion = t.arrowFunctionExpression(
         [],
         t.blockStatement([
-          t.variableDeclaration("var", [
-            t.variableDeclarator(
-              results.identifier,
-              callExpression(templateIdentifier, [])
-            ),
-          ]),
+          t.variableDeclaration("var", results.declarators),
+          ...results.expressions,
           t.returnStatement(results.identifier),
         ])
       );
       return t.callExpression(arrowFuntion, []);
     }
 
-    return t.callExpression(results.identifier, []);
+    return elementCallExpression;
   }
 
   return results.expressions[0];
@@ -133,15 +143,108 @@ const registerTemplate = (path, template) => {
   return identifier;
 };
 
-const transformElementDom = (path) => {
+const transformElementDom = (path, info = {}) => {
+  // log(path.get("openingElement"));
+  const tagName = getTagName(path.get("openingElement").node);
   let expressions = [],
-    dynamics = [1];
+    dynamics = [1],
+    declarators = [];
   const results = {
-    identifier: path.scope.generateUidIdentifier("el$"),
     expressions,
+    declarators,
     dynamics,
+    template: `<${tagName}`,
   };
+
+  if (!info.skipId) {
+    results.identifier = path.scope.generateUidIdentifier("$el");
+  }
+
+  transformAttributes(path, results);
+  results.template += ">";
+  transformChildren(path, results);
+  results.template += `</${tagName}>`;
   return results;
+};
+
+const transformChildren = (path, results) => {
+  // log(path.get("children"));
+  const childrenTransformed = path
+    .get("children")
+    .map((childPath, index) =>
+      transformNode(childPath, {
+        skipId:
+          !results.identifier ||
+          !detectExpressions(path.get("children"), index),
+      })
+    )
+    .filter(Boolean);
+
+  let tmptPath = results.identifier;
+  childrenTransformed.forEach((child, index) => {
+    results.template += child.template;
+
+    if (child.identifier) {
+      const declarator = t.variableDeclarator(
+        child.identifier,
+        t.memberExpression(
+          tmptPath,
+          t.identifier(index === 0 ? "firstChild" : "nextSibling")
+        )
+      );
+
+      results.declarators.push(declarator);
+      results.expressions.push(...child.expressions);
+      results.declarators.push(...(child.declarators || []));
+    } else if (child.expressions.length) {
+      const insert = registerImportMethod(path, "insert", config.moduleName);
+      results.expressions.push(
+        t.expressionStatement(
+          t.callExpression(insert, [results.identifier, child.expressions[0]])
+        )
+      );
+    }
+  });
+};
+
+const transformAttributes = (path, results) => {
+  const attributes = path
+    .get("openingElement")
+    .get("attributes")
+    .map((a) => a.node);
+
+  attributes.forEach((attribute) => {
+    if (t.isStringLiteral(attribute.value)) {
+      const [key, value] = getAttributeRawKeyAndValue(attribute);
+      results.template += ` ${key}="${value}"`;
+    }
+
+    if (
+      t.isJSXExpressionContainer(attribute.value) &&
+      !t.isJSXEmptyExpression(attribute.value.expression)
+    ) {
+      const effect = registerImportMethod(path, "effect", config.moduleName);
+      results.expressions.push(
+        t.expressionStatement(
+          t.callExpression(effect, [
+            t.arrowFunctionExpression(
+              [],
+              setAttribute(
+                path,
+                results.identifier,
+                ...getAttributePropertyKeyAndValue(attribute)
+              )
+            ),
+          ])
+        )
+      );
+    }
+  });
+};
+
+const setAttribute = (path, element, key, value) => {
+  const set = registerImportMethod(path, "setAttribute", config.moduleName);
+  return t.callExpression(set, [element, t.stringLiteral(key.name), value]);
 };
 
 const getAttributePropertyKeyAndValue = (attribute) => {
@@ -153,6 +256,25 @@ const getAttributePropertyKeyAndValue = (attribute) => {
   return [key, value];
 };
 
+const getAttributeRawKeyAndValue = (attribute) => {
+  const key = attribute.name.name;
+  let value = attribute.value;
+  while (t.isJSXExpressionContainer(value)) value = value.expression;
+
+  return [key, value.value];
+};
+
+const detectExpressions = (children, index) => {
+  if (children.length) {
+    for (let i = index; i < children.length; i++) {
+      const childPath = children[i];
+      if (t.isJSXText(childPath.node)) continue;
+      else if (t.isJSXExpressionContainer(childPath.node)) return true;
+      else if (detectExpressions(childPath.get("children"), 0)) return true;
+    }
+  }
+};
+
 const getTagName = (openingElement) => openingElement.name.name;
 
 const isComponent = (tagName) =>
@@ -160,11 +282,11 @@ const isComponent = (tagName) =>
   /^[^a-zA-Z]/.test(tagName) ||
   tagName.includes(".");
 
-const registerImportMethod = (path, name, moduleName) => {
+export const registerImportMethod = (path, name, moduleName) => {
   const imports =
     path.scope.getProgramParent().data.imports ||
     (path.scope.getProgramParent().data.imports = new Map());
-  const moduleMethodKey = `${moduleName}:${name}`;
+  const moduleMethodKey = `${moduleName}:$${name}`;
 
   if (!imports.has(moduleMethodKey)) {
     const identifier = addNamed(path, name, moduleName, {
@@ -176,6 +298,18 @@ const registerImportMethod = (path, name, moduleName) => {
   }
 
   return t.cloneNode(imports.get(moduleMethodKey));
+};
+
+const trimWhitespace = (text) => {
+  text = text.replace(/\r/g, "");
+  if (/\n/g.test(text)) {
+    text = text
+      .split("\n")
+      .map((t, i) => (i ? t.replace(/^\s*/g, "") : t))
+      .filter((s) => !/^\s*$/.test(s))
+      .join(" ");
+  }
+  return text.replace(/\s+/g, " ");
 };
 
 export const transformJsxFragment = noop;
