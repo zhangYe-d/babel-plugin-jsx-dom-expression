@@ -193,6 +193,8 @@ const transformChildren = (path, results) => {
         )
       );
 
+      tmptPath = child.identifier;
+
       results.declarators.push(declarator);
       results.expressions.push(...child.expressions);
       results.declarators.push(...(child.declarators || []));
