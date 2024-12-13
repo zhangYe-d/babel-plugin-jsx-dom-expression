@@ -68,8 +68,6 @@ const transformComponent = (path, tagName) => {
     config.moduleName
   );
 
-  // log(path.get("openingElement").node);
-
   const props = transformProps(path.get("openingElement").node.attributes);
 
   expressions.push(
@@ -79,7 +77,6 @@ const transformComponent = (path, tagName) => {
 };
 
 const transformProps = (attributes) => {
-  // log(attributes);
   const properties = attributes.reduce((props, attribute) => {
     if (t.isJSXExpressionContainer(attribute)) {
       if (t.isEmptyStatement(attribute.expression)) return props;
@@ -144,7 +141,6 @@ const registerTemplate = (path, template) => {
 };
 
 const transformElementDom = (path, info = {}) => {
-  // log(path.get("openingElement"));
   const tagName = getTagName(path.get("openingElement").node);
   let expressions = [],
     dynamics = [1],
@@ -168,7 +164,6 @@ const transformElementDom = (path, info = {}) => {
 };
 
 const transformChildren = (path, results) => {
-  // log(path.get("children"));
   const childrenTransformed = path
     .get("children")
     .map((childPath, index) =>
@@ -226,22 +221,66 @@ const transformAttributes = (path, results) => {
       !t.isJSXEmptyExpression(attribute.value.expression)
     ) {
       const effect = registerImportMethod(path, "effect", config.moduleName);
+      const [key, value] = getAttributePropertyKeyAndValue(attribute);
+      if (key.name.startsWith("on")) {
+        transformAttributeEventBinding(results, key, value, effect);
+      } else if (key.name === "style") {
+        transformAttributeStyle(results, key, value, effect);
+      } else {
+        results.expressions.push(
+          t.expressionStatement(
+            t.callExpression(effect, [
+              t.arrowFunctionExpression(
+                [],
+                setAttribute(path, results.identifier, key, value)
+              ),
+            ])
+          )
+        );
+      }
+    }
+  });
+};
+
+const transformAttributeEventBinding = (results, key, value, effect) => {
+  const event = t.identifier(key.toLowerCase());
+  results.expressions.push(
+    t.expressionStatement(
+      t.assignmentExpression(
+        "=",
+        t.memberExpression(results.identifier, event),
+        value
+      )
+    )
+  );
+};
+
+const transformAttributeStyle = (results, key, value, effect) => {
+  if (t.isObjectExpression(value)) {
+    const setStyleProperty = [
+      t.identifier("style"),
+      t.identifier("setProperty"),
+    ].reduce(
+      (object, property) => t.memberExpression(object, property),
+      results.identifier
+    );
+
+    value.properties.forEach((property) => {
       results.expressions.push(
         t.expressionStatement(
           t.callExpression(effect, [
             t.arrowFunctionExpression(
               [],
-              setAttribute(
-                path,
-                results.identifier,
-                ...getAttributePropertyKeyAndValue(attribute)
-              )
+              t.callExpression(setStyleProperty, [
+                t.stringLiteral(property.key.name),
+                property.value,
+              ])
             ),
           ])
         )
       );
-    }
-  });
+    });
+  }
 };
 
 const setAttribute = (path, element, key, value) => {

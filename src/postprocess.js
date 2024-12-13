@@ -15,6 +15,6 @@ export const postprocess = (path) => {
       )
     );
 
-    path.node.body.unshift(t.variableDeclaration("var", declarators));
+    path.node.body.splice(1, 0, t.variableDeclaration("var", declarators));
   }
 };
