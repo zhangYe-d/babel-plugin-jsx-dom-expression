@@ -13,5 +13,3 @@ export default () => {
     },
   };
 };
-
-const log = (content) => console.log(content);

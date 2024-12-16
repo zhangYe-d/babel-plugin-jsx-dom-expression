@@ -16,9 +16,7 @@ const config = {
 
 export const transformJsx = (path) => {
   const results = transformNode(path);
-  //   const template = createTemplate(path, results);
 
-  //   log(path.node);
   path.replaceWith(createTemplate(path, results));
 };
 
@@ -354,5 +352,3 @@ const trimWhitespace = (text) => {
 };
 
 export const transformJsxFragment = noop;
-
-const log = (content) => console.log(content);
