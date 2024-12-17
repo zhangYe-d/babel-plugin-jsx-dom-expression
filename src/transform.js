@@ -10,11 +10,10 @@ const JSXExpressionContainer = "JSXExpressionContainer";
 const JSXEmptyExpression = "JSXEmptyExpression";
 
 // config
-const config = {
-  moduleName: "solid/web",
-};
+let config;
 
 export const transformJsx = (path) => {
+  config = path.hub.file.metadata.config;
   const results = transformNode(path);
 
   path.replaceWith(createTemplate(path, results));
