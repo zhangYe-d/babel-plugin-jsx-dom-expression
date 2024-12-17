@@ -95,8 +95,8 @@ const transformProps = (attributes) => {
 const createTemplate = (path, results) => {
   if (results.identifier) {
     const templateIdentifier = registerTemplate(path, results.template);
+    const elementCallExpression = t.callExpression(templateIdentifier, []);
     if (results.expressions.length) {
-      const elementCallExpression = t.callExpression(templateIdentifier, []);
       results.declarators.unshift(
         t.variableDeclarator(results.identifier, elementCallExpression)
       );
