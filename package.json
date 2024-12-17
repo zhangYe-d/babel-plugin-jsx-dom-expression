@@ -24,5 +24,8 @@
     "@babel/core": "^7.26.0",
     "@babel/plugin-syntax-jsx": "^7.25.9",
     "@babel/types": "^7.26.3"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }
