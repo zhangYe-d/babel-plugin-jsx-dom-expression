@@ -222,7 +222,7 @@ const transformAttributes = (path, results) => {
       if (key.name.startsWith("on")) {
         transformAttributeEventBinding(results, key, value, effect);
       } else if (key.name === "style") {
-        transformAttributeStyle(results, key, value, effect);
+        transformAttributeStyle(results, key, value, effect, path);
       } else {
         results.expressions.push(
           t.expressionStatement(
@@ -252,7 +252,7 @@ const transformAttributeEventBinding = (results, key, value, effect) => {
   );
 };
 
-const transformAttributeStyle = (results, key, value, effect) => {
+const transformAttributeStyle = (results, key, value, effect, path) => {
   if (t.isObjectExpression(value)) {
     const setStyleProperty = [
       t.identifier("style"),
@@ -277,6 +277,15 @@ const transformAttributeStyle = (results, key, value, effect) => {
         )
       );
     });
+  }
+
+  if (t.isIdentifier(value)) {
+    const style = registerImportMethod(path, "style", config.moduleName);
+    results.expressions.push(
+      t.expressionStatement(
+        t.callExpression(style, [results.identifier, value])
+      )
+    );
   }
 };
 
