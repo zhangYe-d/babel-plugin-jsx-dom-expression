@@ -217,7 +217,11 @@ const transformAttributes = (path, results) => {
       t.isJSXExpressionContainer(attribute.value) &&
       !t.isJSXEmptyExpression(attribute.value.expression)
     ) {
-      const effect = registerImportMethod(path, "effect", config.moduleName);
+      const effect = registerImportMethod(
+        path,
+        config.effectWrapper,
+        config.moduleName
+      );
       const [key, value] = getAttributePropertyKeyAndValue(attribute);
       if (key.name.startsWith("on")) {
         transformAttributeEventBinding(results, key, value, effect);
